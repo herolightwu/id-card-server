@@ -1,0 +1,31 @@
+{
+  "name": "api",
+  "version": "1.0.0",
+  "description": "api",
+  "main": "index.js",
+  "dependencies": {
+    "bluebird": "^3.7.2",
+    "body-parser": "^1.19.1",
+    "cors": "^2.8.5",
+    "dotenv": "^10.0.0",
+    "express": "^4.17.2",
+    "express-session": "^1.17.2",
+    "jsonwebtoken": "^8.5.1",
+    "multer": "^1.4.4",
+    "node": "^17.3.0",
+    "nodemailer": "^6.7.7",
+    "pdfkit": "^0.13.0",
+    "pg-promise": "^10.11.1",
+    "sharp": "^0.29.3"
+  },
+  "scripts": {
+    "start": "node idcardserver.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/nodemailer": "^6.4.4",
+    "@types/pdfkit": "^0.12.4"
+  }
+}
