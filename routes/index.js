@@ -63,6 +63,7 @@ router.post("/api/decode", cors(), queries.Decode);
 
 //Image Compress
 router.post("/api/compress_image", cors(), queries.compress_image);
+router.post("/api/compress_image_filename", cors(), queries.compress_image_filename);
 
 // Reference Programs anf Permission List
 router.get("/api/allprograms", cors(), queries.getProgramList);
@@ -92,6 +93,7 @@ router.put("/api/deletedomain", cors(), queries.deleteDomain);
 
 //Batch order
 router.post("/api/batchtemplate", cors(), queries.makeCsvTemplate);
-
+router.get("/api/csvdownload/:filename", cors(), queries.downloadCsvTemplate)
+router.post("/api/uploadzip", cors(), queries.uploadZip);
 
 module.exports = router;

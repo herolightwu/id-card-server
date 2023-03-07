@@ -23,8 +23,8 @@ var index = require("./routes/index");
 //     extended: true,
 //   })
 // );
-app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ limit: "50mb" }));
+app.use(express.json({ limit: 500 * 1024 * 1024}));
+app.use(express.urlencoded({ extended: true, limit: 500 * 1024 * 1024}));
 
 // serving static files
 app.use('/uploads', express.static('uploads'));

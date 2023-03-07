@@ -14,12 +14,14 @@ const sharp = require("sharp");
 
 const dbAuth = require("./dbAuth");
 const authUser = require("../server/userAuth");
+const uploadFile = require("../middleware/upload");
+const decompress = require("decompress");
 const { fail } = require("assert");
 
 var nodemailer = require('nodemailer');
 
 const PDFDocument = require('pdfkit');
-const SendmailTransport = require("nodemailer/lib/sendmail-transport");
+const csv = require('csv-stringify');
 
 const admindb = dbAuth.admin_db;
 const idcarddb = dbAuth.idcard_db;
@@ -710,8 +712,10 @@ function createCardProgram(req, res, next) {
   const created_user = req.body.user
   const sel_domain = req.body.domain
   const printed_size = req.body.printed_size
+  const jsonbarcode = req.body.jsonbarcode
   
   const template = JSON.stringify(programTemplate)
+  const json_barcode = JSON.stringify(jsonbarcode)
   
   //get date 
   let ddd = new Date();
@@ -728,7 +732,7 @@ function createCardProgram(req, res, next) {
         let domain_db = cdb.getDomainDB(sel_domain);
         if (domain_db){
           domain_db.any(
-            "INSERT INTO card_programs (program_name, program_template, card_image_front, card_image_back, logo, compression, edac, matrix_size, pxpcw, sample_width, prefilter, created_user, created_date, modified_user, modified_date, printed_size) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING program_id",
+            "INSERT INTO card_programs (program_name, program_template, card_image_front, card_image_back, logo, compression, edac, matrix_size, pxpcw, sample_width, prefilter, created_user, created_date, modified_user, modified_date, printed_size, jsonbarcode) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING program_id",
             [
               programName,
               template,
@@ -746,6 +750,7 @@ function createCardProgram(req, res, next) {
               created_user,
               today,
               printed_size,
+              json_barcode,
             ]
           )
           .then((data) => {
@@ -787,10 +792,13 @@ function editCardProgram(req, res, next) {
   const pxpcw = req.body.pxpcw
   const sampleWidth = req.body.sample_width
   const prefilter = req.body.prefilter
-  const template = JSON.stringify(programTemplate)
   const modified_user = req.body.user
   const sel_domain = req.body.domain
   const printed_size = req.body.printed_size
+  const jsonbarcode = req.body.jsonbarcode
+  
+  const template = JSON.stringify(programTemplate)
+  const json_barcode = JSON.stringify(jsonbarcode)
 
   //get date 
   let ddd = new Date();
@@ -807,7 +815,7 @@ function editCardProgram(req, res, next) {
         let domain_db = cdb.getDomainDB(sel_domain);
         if (domain_db){
           domain_db.any(
-            "UPDATE card_programs SET program_name = ($2), program_template = ($3), card_image_front = ($4), card_image_back = ($5), logo = ($6), compression = ($7), edac = ($8), matrix_size = ($9), pxpcw = ($10), sample_width = ($11), prefilter = ($12), modified_user = ($13), modified_date = ($14), printed_size = ($15) WHERE program_id = ($1) AND delete_flag = false",
+            "UPDATE card_programs SET program_name = ($2), program_template = ($3), card_image_front = ($4), card_image_back = ($5), logo = ($6), compression = ($7), edac = ($8), matrix_size = ($9), pxpcw = ($10), sample_width = ($11), prefilter = ($12), modified_user = ($13), modified_date = ($14), printed_size = ($15), jsonbarcode = ($16) WHERE program_id = ($1) AND delete_flag = false",
             [
               programID,
               programName,
@@ -824,6 +832,7 @@ function editCardProgram(req, res, next) {
               modified_user,
               today,
               printed_size,
+              json_barcode,
             ]
           )
             .then((data) => {
@@ -933,25 +942,28 @@ function getCardProgrambyID(req, res, next) {
   const programID = parseInt(req.params.id);
   let result = verifytoken(req, res, next);
   if(result ==='true'){
-    if (accessLevel < 4){
+    if(accessLevel < 4){
       companyDB.any("SELECT * from card_programs WHERE program_id = ($1) AND delete_flag = false", [programID])
-      .then((data) => {
-        res.status(200)
-          .json({
-              status: "success",
-              data: data,
-              message: "get card program success",
-            });
-      })
-      .catch((err) => {
-        res
-          .status(400)
-          .json({ status: error, data: err, message: "bad request" });
-      });
+        .then((data) => {
+          res.status(200)
+            .json({
+                status: "success",
+                data: data,
+                message: "get card program success",
+              });
+        })
+        .catch((err) => {
+          res
+            .status(400)
+            .json({ status: error, data: err, message: "bad request" });
+        });
     } else {
       res.status(401)
-      .json({ status: "error",  message:'Not Allow'})
+        .json({ status: "error",  message:'Not Permission'})
     }
+  } else {
+    res.status(401)
+      .json({ status: "error",  message:'Not Allow'})
   }
 }
 
@@ -1032,7 +1044,7 @@ function orderCard(req, res, next) {
   barcode = req.body.barcode;
   nfcfields = req.body.nfc_fields;
   uuid = req.body.unique_id;
-   createduser = req.body.created_user;
+  createduser = req.body.created_user;
   modifieduser = req.body.modified_user;
   cardstatus = 'ordered';
   //get date 
@@ -1343,7 +1355,7 @@ function userLogin(req,res,next){
           .status(400)
           .json({ status: "error", data: err, message: "bad request" });
       })
-      //  .finally(companyDB.destroy()); // For imediate app exit, shutting down the connection pool.
+      // For imediate app exit, shutting down the connection pool.
       .finally(() =>{
       })
     }
@@ -1399,7 +1411,6 @@ function verifytoken (req,res,next) {
 
 function Encode(req, res, next) {
   let message = req.body.message;
-  const webp_name = message['compressed_image']
   const encodemsg = JSON.stringify(message)
   console.log('encode message : ', encodemsg)
   const arg_msg = encodemsg.replace(/\"/g, '#')
@@ -1597,7 +1608,43 @@ async function compress_image(req, res, next){
       .status(400)
       .json({ status: "error", message: "Image file save failed" });
   }
+}
 
+async function compress_image_filename(req, res, next){
+  let fileName = req.body.filename;
+  const fname = fileName.split('.');
+  let webpName =  `webp-${fname[0]}.webp`;
+  let quality = 50;
+    for (quality = 50; quality > 0 ; quality -= 5){
+      try {
+        await sharp("./uploads/" + fileName)
+          .resize({ width: 80, height: 80, fit: "contain" })
+          .removeAlpha()
+          .webp({ quality: quality, alphaQuality: 0, lossless: false })
+          .toFile("./uploads/" + webpName);
+  
+        try{
+          let stats = await getfilestats(webpName);
+          if (stats.size < 550) {
+            break;
+          } 
+        } catch(ex){
+          return res.status(400)
+                    .json({ status: "error", message: "File doesn't exist."});
+        }
+      } catch (e) {
+        return res
+          .status(401)
+          .json({ status: "error", message: "Image compress failed" });
+      }
+    }
+    //read webp file as base64
+    const webp_file = fs.readFileSync('./uploads/' + webpName, {encoding: 'base64'})
+    //delete origin file and webp file
+    fs.unlinkSync("./uploads/" + webpName)
+    return res
+          .status(200)
+          .json({ status: "success", webp: webp_file, message: "Image compress success" });
 }
 
 // function to create file from base64 encoded string
@@ -1655,8 +1702,7 @@ async function generateVCard(req,res,next){
   license_id = req.body.license_id
   member_id = req.body.member_id
   printed_size = req.body.printed_size
-  text_one = req.body.text_one
-  text_two = req.body.text_two
+  disp_txt = req.body.disp_txt
 
   let result = verifytoken(req, res, next);
   if(result ==='true'){
@@ -1705,6 +1751,13 @@ async function generateVCard(req,res,next){
       align: 'left',
       valign: 'top'
     });
+    for (let i = 0; i < disp_txt.length; i++){
+      if (disp_txt[i].side == 1){
+        doc.fontSize(disp_txt[i].size)
+          .fillColor(disp_txt[i].color)
+          .text(disp_txt[i].value, disp_txt[i].xpos, disp_txt[i].ypos, {lineBreak: false})
+      }
+    }
 
     // Add back page: member ID, name, background, faceimage, logo
     doc.addPage({size:[338, 213]})
@@ -1716,35 +1769,26 @@ async function generateVCard(req,res,next){
         .fontSize(14)
         .fillColor('black')
         .text(username, 88, 125, {lineBreak: false})
-        .fontSize(14)
-        .fillColor('black')
-        .text(member_id, 88, 145, {lineBreak: false}) 
         .image(faceimage, 15, 125, {
           fit: [70, 70]
         })
-        // .image(logo, 88, 125, {
-        //   fit: [25, 25]
-        // });
-    if (text_one){
-      doc.fontSize(14)
-        .fillColor('black')
-        .text(text_one, 88, 165, {lineBreak: false})
-    }
-    if (text_two) {
-      doc.fontSize(14)
-        .fillColor('black')
-        .text(text_two, 88, 185, {lineBreak: false})
+    for (let i = 0; i < disp_txt.length; i++){
+      if (disp_txt[i].side == 2){
+        let txt = disp_txt[i].label + " : " + disp_txt[i].value
+        if (disp_txt[i].label == 'Member ID' || disp_txt[i].label == 'Card ID'){
+          txt = "ID: " + disp_txt[i].value
+        }
+        doc.fontSize(disp_txt[i].size)
+          .fillColor(disp_txt[i].color)
+          .text(txt, disp_txt[i].xpos, disp_txt[i].ypos, {lineBreak: false})
+      }
     }
 
     let code_size = 106
     if (printed_size === "small"){
       code_size = 66
     }
-    // if (barcode_size < 114 && barcode_size > 60){
-    //   code_size = 66 + (40 * (barcode_size - 60)) / 54
-    // } else if (barcode_size < 61){
-    //   code_size = 66
-    // }
+    
     // add vericode background
     doc.rect(317 - code_size, 192 - code_size, code_size + 8, code_size + 8)
       .fill('white');
@@ -1781,8 +1825,7 @@ async function generateVCard(req,res,next){
         const domain = 'vrtc';
         let vrtc_db = cdb.getDomainDB(domain);
         vrtc_db.any(`UPDATE licenses SET card_count = card_count + 1 WHERE license_id = '${license_id}' RETURNING card_count`)
-          // .then((data) => {
-              
+          // .then((data) => {              
           // }).catch((err) => {
           //   res
           //   .status(400)
@@ -2396,8 +2439,93 @@ function getTemplatelist(req, res, next) {
 }
 
 function makeCsvTemplate(req, res, next) {
+  fs.access("./csv_templates", (error) => {
+    if (error) {
+      fs.mkdirSync("./csv_templates")
+    } 
+  });
 
+  let program_name = req.body.program_name
+  let domain = req.body.domain
+  let data = req.body.data
+
+  let today = new Date();
+  let dd = String(today.getDate()).padStart(2, '0');
+  let mm = String(today.getMonth() + 1).padStart(2, '0');   //January is 0!
+  let yyyy = today.getFullYear();
+
+  const filename = domain + '_' + program_name + '_' + yyyy + mm + dd + '.csv' 
+  let result = verifytoken(req, res, next);
+  if(result ==='true'){
+    // (C) CREATE CSV FILE
+    csv.stringify(data, (err, output) => {
+      fs.writeFileSync('./csv_templates/' + filename, output);
+      if (err){
+        res.status(400)
+          .json({ status: "error", data: err, message: "bad request" });
+      } else {
+        res.status(200)
+          .json({ status: "success", data: filename, message: "CSV template write success" })
+      }
+    });
+  } else {
+    res.status(401)
+      .json({ status: "unauthorized", message: "Not Allow" });
+  }
 }
+
+function downloadCsvTemplate(req, res){
+  const filename = req.params.filename
+  const filepath = './csv_templates/' + filename
+  res.download(filepath, filename, (err)=>{
+    if (err){
+      res.send({error: err, message: "download failed"})
+    }
+  })
+}
+
+async function uploadZip(req, res, next){
+  let result = verifytoken(req, res, next);
+  if(result ==='true'){
+    try {   
+      await uploadFile(req, res)
+      if (req.file == undefined) {
+        return res.status(400).send({ message: "Please upload a file!" });
+      }
+      //unzip file
+      decompress("uploads_zip/" + req.file.originalname, "uploads")
+      .then((files) => {
+        // console.log("files:", files)
+        // console.log("domain:", current_domain)
+        files.map((item) => {
+          if (!item.path.includes("/")){
+            fs.rename("uploads/" + item.path, "uploads/" + current_domain + "-" + item.path, function(error){
+              if(error) { console.log("Rename Error: ", error)}
+            } )
+          }
+        })
+        res.status(200).send({
+          message: "Uploaded the file successfully: " + req.file.originalname,
+        });
+      })
+      .catch((err) => {
+        return res.status(400).send({ message: `Could not unzip the file: ${req.file.originalname}. ${err}`});
+      })    
+    } catch (err) {
+      if (err.code == "LIMIT_FILE_SIZE") {
+        return res.status(401).send({
+          message: "File size cannot be larger than 500MB!",
+        });
+      }
+      res.status(500).send({
+        message: `Could not upload the file: ${req.file.originalname}. ${err}`,
+      });
+    }
+  } else {
+    res.status(401)
+      .json({ status: "unauthorized", message: "Not Allow" });
+  }
+} 
 
  module.exports = { 
   getDatabaseAPIKey, 
@@ -2437,6 +2565,7 @@ function makeCsvTemplate(req, res, next) {
   Encode,
   Decode,
   compress_image,
+  compress_image_filename,
   getProgramList,
   getPermissionList,
   generateVCard,
@@ -2455,5 +2584,7 @@ function makeCsvTemplate(req, res, next) {
   createDomain,
   editDomain,
   deleteDomain,
-  makeCsvTemplate
+  makeCsvTemplate,
+  downloadCsvTemplate,
+  uploadZip
 };
