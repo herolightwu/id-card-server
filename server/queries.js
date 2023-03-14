@@ -1753,9 +1753,15 @@ async function generateVCard(req,res,next){
     });
     for (let i = 0; i < disp_txt.length; i++){
       if (disp_txt[i].side == 1){
+        let txt = disp_txt[i].label + " : " + disp_txt[i].value
+        if (disp_txt[i].label == 'Member ID' || disp_txt[i].label == 'Card ID'){
+          txt = "ID: " + disp_txt[i].value
+        } else if (disp_txt[i].label == 'Name'){
+          txt = disp_txt[i].value
+        }
         doc.fontSize(disp_txt[i].size)
           .fillColor(disp_txt[i].color)
-          .text(disp_txt[i].value, disp_txt[i].xpos, disp_txt[i].ypos, {lineBreak: false})
+          .text(txt, disp_txt[i].xpos, disp_txt[i].ypos, {lineBreak: false})
       }
     }
 
@@ -1765,10 +1771,7 @@ async function generateVCard(req,res,next){
           fit: [338, 213],
           align: 'left',
           valign: 'top'
-        })        
-        .fontSize(14)
-        .fillColor('black')
-        .text(username, 88, 125, {lineBreak: false})
+        })
         .image(faceimage, 15, 125, {
           fit: [70, 70]
         })
@@ -1777,6 +1780,8 @@ async function generateVCard(req,res,next){
         let txt = disp_txt[i].label + " : " + disp_txt[i].value
         if (disp_txt[i].label == 'Member ID' || disp_txt[i].label == 'Card ID'){
           txt = "ID: " + disp_txt[i].value
+        } else if (disp_txt[i].label == 'Name'){
+          txt = disp_txt[i].value
         }
         doc.fontSize(disp_txt[i].size)
           .fillColor(disp_txt[i].color)
